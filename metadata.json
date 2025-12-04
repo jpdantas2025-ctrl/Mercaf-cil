@@ -1,0 +1,9 @@
+{
+  "name": "Mercafácil",
+  "description": "Marketplace de supermercados em Roraima com IA integrada.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}
