@@ -1,26 +1,30 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+
+import { GoogleGenAI, GenerateContentResponse, Chat } from "@google/genai";
 
 // Initialize AI Client
-// Ideally this would check for process.env.API_KEY but for this demo environment we assume it's injected or handled by the platform.
-// Note: We create a new instance per call if needed to handle key updates, but a singleton is fine for standard usage if env var is static.
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
 const getAIClient = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.warn("API Key missing");
+    // We throw to ensure the UI handles the error or the developer sees it immediately.
+    // In a real app, this might trigger a graceful UI degradation.
+    throw new Error("API Key is missing. Ensure process.env.API_KEY is configured.");
   }
-  return new GoogleGenAI({ apiKey: apiKey || '' });
+  return new GoogleGenAI({ apiKey });
 };
+
+// Define a simplified type for history that matches the SDK's Content expectation
+type ChatHistory = { role: 'user' | 'model'; parts: { text: string }[] }[];
 
 export const chatWithAssistant = async (
   message: string,
-  history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+  history: ChatHistory
 ): Promise<string> => {
   try {
     const ai = getAIClient();
     
-    // Using a chat structure via generateContent with history context manually or using chat API
-    // Implementing via chat API for session handling
-    const chat = ai.chats.create({
+    // Using ai.chats.create to establish session context with history
+    const chat: Chat = ai.chats.create({
       model: 'gemini-2.5-flash',
       config: {
         systemInstruction: `Você é o assistente virtual do Mercafácil, um marketplace de supermercados em Roraima (Boa Vista e interior). 
@@ -31,13 +35,10 @@ export const chatWithAssistant = async (
         Seja amigável, use emojis, e fale português do Brasil.
         Não invente dados sensíveis.`,
       },
-      history: history.map(h => ({
-        role: h.role,
-        parts: h.parts
-      }))
+      history: history
     });
 
-    const result = await chat.sendMessage({ message });
+    const result: GenerateContentResponse = await chat.sendMessage({ message });
     return result.text || "Desculpe, não entendi.";
   } catch (error) {
     console.error("Gemini Chat Error:", error);
@@ -45,16 +46,16 @@ export const chatWithAssistant = async (
   }
 };
 
-export const analyzeProductImage = async (base64Image: string): Promise<string> => {
+export const analyzeProductImage = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<string> => {
   try {
     const ai = getAIClient();
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg',
+              mimeType: mimeType,
               data: base64Image
             }
           },
@@ -77,7 +78,7 @@ export const analyzeProductImage = async (base64Image: string): Promise<string> 
 export const generateMarketingCaption = async (productName: string): Promise<string> => {
   try {
     const ai = getAIClient();
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Crie uma legenda curta, vendedora e emocionante para o Instagram vendendo: ${productName}. Use emojis. Foco em urgência e qualidade.`,
     });
@@ -86,6 +87,29 @@ export const generateMarketingCaption = async (productName: string): Promise<str
     console.error("Gemini Text Error:", error);
     return "Oferta imperdível no Mercafácil! Aproveite agora.";
   }
+};
+
+// Veo Generation Stub (Client-side simulation of the API call structure)
+export const generateMarketingVideo = async (prompt: string): Promise<string> => {
+    console.log("Generating video with prompt:", prompt);
+    
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            // Returning a sample placeholder video URL
+            resolve("https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4");
+        }, 3000);
+    });
+    
+    /* 
+    // Actual implementation structure would be:
+    const ai = getAIClient();
+    let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '9:16' }
+    });
+    // ... polling logic ...
+    */
 };
 
 export const generateRecipeFromIngredients = async (ingredients: string[]): Promise<string> => {
@@ -104,7 +128,7 @@ export const generateRecipeFromIngredients = async (ingredients: string[]): Prom
     
     Formate a saída em Markdown limpo.`;
 
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
     });

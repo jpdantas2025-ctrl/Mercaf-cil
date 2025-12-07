@@ -1,134 +1,383 @@
+
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
-// 1. Municípios
+/**
+ * ==========================================================
+ * 1. SISTEMA CENTRAL & LOCALIZAÇÃO
+ * ==========================================================
+ */
+
+// Municípios de Roraima (Tabela de Domínio)
 const Municipality = sequelize.define('Municipality', {
-  name: { type: DataTypes.STRING, allowNull: false, unique: true }
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING, allowNull: false, unique: true },
+  state: { type: DataTypes.STRING, defaultValue: 'RR' },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
 });
 
-// 2. Supermercados
-const Market = sequelize.define('Market', {
-  name: { type: DataTypes.STRING, allowNull: false },
-  address: { type: DataTypes.STRING },
+// Roles e Permissões (RBAC)
+const Role = sequelize.define('Role', {
+  name: { type: DataTypes.STRING, unique: true, allowNull: false }, // 'admin', 'customer', 'driver', 'vendor'
+  description: { type: DataTypes.STRING }
 });
 
-// Rel: Um Município tem vários Mercados
-Municipality.hasMany(Market);
-Market.belongsTo(Municipality);
-
-// 3. Produtos
-const Product = sequelize.define('Product', {
-  name: { type: DataTypes.STRING, allowNull: false },
-  category: { type: DataTypes.STRING },
-  price: { type: DataTypes.FLOAT, allowNull: false },
-  stock: { type: DataTypes.INTEGER, defaultValue: 0 },
-  promoPrice: { type: DataTypes.FLOAT },
-  promoUntil: { type: DataTypes.DATE },
-  image: { type: DataTypes.STRING }
+const Permission = sequelize.define('Permission', {
+  name: { type: DataTypes.STRING, unique: true, allowNull: false }, // 'product:create', 'report:view'
+  description: { type: DataTypes.STRING }
 });
 
-// Rel: Um Mercado tem vários Produtos
-Market.hasMany(Product);
-Product.belongsTo(Market);
+const RolePermission = sequelize.define('RolePermission', {});
+Role.belongsToMany(Permission, { through: RolePermission });
+Permission.belongsToMany(Role, { through: RolePermission });
 
-// 4. Usuários (Clientes / Admins)
+/**
+ * ==========================================================
+ * 2. AUTENTICAÇÃO E PERFIS DE USUÁRIO
+ * ==========================================================
+ */
+
+// Tabela Base de Usuários (Login Unificado)
 const User = sequelize.define('User', {
-  name: { type: DataTypes.STRING },
-  email: { type: DataTypes.STRING, unique: true },
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  email: { type: DataTypes.STRING, unique: true, allowNull: true }, // Drivers podem usar apenas telefone
+  phone: { type: DataTypes.STRING, unique: true, allowNull: false },
   passwordHash: { type: DataTypes.STRING },
-  role: { type: DataTypes.STRING, defaultValue: 'cliente' } // 'cliente' | 'admin'
+  name: { type: DataTypes.STRING, allowNull: false },
+  avatarUrl: { type: DataTypes.STRING },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+  lastLogin: { type: DataTypes.DATE }
 });
 
-// 5. Motoristas
+User.belongsTo(Role);
+Role.hasMany(User);
+
+// Perfil: Cliente (Consumidor)
+const Customer = sequelize.define('Customer', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  cpf: { type: DataTypes.STRING, unique: true },
+  addressDefault: { type: DataTypes.JSONB }, // { street, number, coords: { lat, lng } }
+  
+  // Gamificação
+  points: { type: DataTypes.INTEGER, defaultValue: 0 },
+  level: { type: DataTypes.ENUM('Bronze', 'Prata', 'Ouro', 'Platina'), defaultValue: 'Bronze' },
+  xp: { type: DataTypes.INTEGER, defaultValue: 0 },
+  streakDays: { type: DataTypes.INTEGER, defaultValue: 0 },
+  lifetimeSavings: { type: DataTypes.FLOAT, defaultValue: 0.0 }
+});
+
+Customer.belongsTo(User); // 1:1 Link
+User.hasOne(Customer);
+
+// Perfil: Motorista / Entregador
 const Driver = sequelize.define('Driver', {
-  name: { type: DataTypes.STRING },
-  phone: { type: DataTypes.STRING, unique: true }, // Login via telefone
-  motorcyclePlate: { type: DataTypes.STRING },
-  passwordHash: { type: DataTypes.STRING }, // Senha para login
-  status: { type: DataTypes.ENUM('available', 'busy', 'offline', 'blocked', 'pending'), defaultValue: 'pending' }, 
-  earnings: { type: DataTypes.FLOAT, defaultValue: 0.0 },
-  vehicleType: {
-    type: DataTypes.ENUM('motorcycle','car','bike','walking', 'on_foot'),
-    allowNull: false,
-    defaultValue: 'motorcycle'
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  cpf: { type: DataTypes.STRING, unique: true },
+  cnh: { type: DataTypes.STRING },
+  vehicleType: { 
+    type: DataTypes.ENUM('motorcycle', 'car', 'bike', 'walking', 'on_foot'),
+    allowNull: false 
   },
-  points: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-  level: { type: DataTypes.ENUM('bronze','prata','ouro','platina'), defaultValue: 'bronze' }
+  vehiclePlate: { type: DataTypes.STRING },
+  status: { 
+    type: DataTypes.ENUM('pending', 'available', 'busy', 'offline', 'blocked'), 
+    defaultValue: 'pending' 
+  },
+  
+  // Métricas
+  rating: { type: DataTypes.FLOAT, defaultValue: 5.0 },
+  totalDeliveries: { type: DataTypes.INTEGER, defaultValue: 0 },
+  
+  // Documentação e Aprovação
+  documentsUrl: { type: DataTypes.JSONB }, // { cnh_front: url, selfie: url }
+  isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
+  
+  // Financeiro Dedicado (Driver Earnings)
+  totalEarned: { type: DataTypes.FLOAT, defaultValue: 0.00 },
+  withdrawnAmount: { type: DataTypes.FLOAT, defaultValue: 0.00 },
+  availableAmount: { type: DataTypes.FLOAT, defaultValue: 0.00 },
+  lastPayoutUpdate: { type: DataTypes.DATE }
 });
 
-// 6. Pedidos
+Driver.belongsTo(User); // 1:1 Link
+User.hasOne(Driver);
+Driver.belongsTo(Municipality); // Cidade Base
+
+// Perfil: Lojista / Mercado (Vendor)
+const Vendor = sequelize.define('Vendor', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  businessName: { type: DataTypes.STRING, allowNull: false }, // Razão Social
+  tradeName: { type: DataTypes.STRING, allowNull: false }, // Nome Fantasia
+  cnpj: { type: DataTypes.STRING, unique: true },
+  address: { type: DataTypes.STRING },
+  location: { type: DataTypes.JSONB }, // { lat, lng }
+  
+  // Configurações
+  isOpen: { type: DataTypes.BOOLEAN, defaultValue: false },
+  deliveryType: { type: DataTypes.ENUM('platform', 'own', 'hybrid'), defaultValue: 'platform' },
+  
+  // Métricas
+  rating: { type: DataTypes.FLOAT, defaultValue: 5.0 },
+  engagementScore: { type: DataTypes.INTEGER, defaultValue: 100 },
+
+  // Financeiro Dedicado
+  availableBalance: { type: DataTypes.FLOAT, defaultValue: 0.00 }
+});
+
+Vendor.belongsTo(User); // Dono da loja
+User.hasMany(Vendor); // Um usuário pode ter múltiplos mercados (franquia)
+Vendor.belongsTo(Municipality);
+
+/**
+ * ==========================================================
+ * 3. CATÁLOGO E PRODUTOS (COM IA)
+ * ==========================================================
+ */
+
+const Category = sequelize.define('Category', {
+  name: { type: DataTypes.STRING, allowNull: false },
+  icon: { type: DataTypes.STRING }, // Lucide icon name
+  isAdult: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
+const Product = sequelize.define('Product', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  description: { type: DataTypes.TEXT },
+  price: { type: DataTypes.FLOAT, allowNull: false },
+  originalPrice: { type: DataTypes.FLOAT }, // Para "de/por"
+  stock: { type: DataTypes.INTEGER, defaultValue: 0 },
+  image: { type: DataTypes.STRING },
+  
+  // Promoções
+  promoPrice: { type: DataTypes.FLOAT },
+  promoExpiresAt: { type: DataTypes.DATE },
+  isFlashOffer: { type: DataTypes.BOOLEAN, defaultValue: false },
+  
+  // IA & Metadados
+  aiTags: { type: DataTypes.JSONB }, // Tags geradas pela IA
+  nutritionalInfo: { type: DataTypes.JSONB }, // Para Modo Saudável
+  isHealthy: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
+Product.belongsTo(Vendor);
+Vendor.hasMany(Product);
+Product.belongsTo(Category);
+
+/**
+ * ==========================================================
+ * 4. PEDIDOS E LOGÍSTICA
+ * ==========================================================
+ */
+
 const Order = sequelize.define('Order', {
-  status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, accepted, delivered
-  totalAmount: { type: DataTypes.FLOAT },
-  municipality: { type: DataTypes.STRING },
-  driverCommission: { type: DataTypes.FLOAT },
-  platformCommission: { type: DataTypes.FLOAT },
-  marketValue: { type: DataTypes.FLOAT }
-});
-
-// 7. Itens do Pedido (Relacionamento N:N entre Pedido e Produto com quantidade)
-const OrderItem = sequelize.define('OrderItem', {
-  quantity: { type: DataTypes.INTEGER, defaultValue: 1 },
-  price: { type: DataTypes.FLOAT } // Preço no momento da compra
-});
-
-// 8. Repasses (Payouts)
-const Payout = sequelize.define('Payout', {
-  amountDriver: { type: DataTypes.FLOAT },
-  amountMarket: { type: DataTypes.FLOAT },
-  platformFee: { type: DataTypes.FLOAT },
-  status: { type: DataTypes.STRING, defaultValue: 'pending' } // pending, paid
-});
-
-// 9. Entregas (Logística)
-const Delivery = sequelize.define('Delivery', {
-  distanceKm: { type: DataTypes.FLOAT, allowNull: false },
-  vehicleType: {
-    type: DataTypes.ENUM('motorcycle','car','bike','walking', 'on_foot'),
-    allowNull: false
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  status: { 
+    type: DataTypes.ENUM('pending', 'accepted', 'preparation', 'ready', 'assigned', 'delivering', 'delivered', 'cancelled', 'returned'),
+    defaultValue: 'pending' 
   },
-  estimatedTimeMin: { type: DataTypes.INTEGER, allowNull: false },
-  status: { type: DataTypes.ENUM('pending','on_route','completed'), defaultValue: 'pending' }
+  
+  // Valores
+  subtotal: { type: DataTypes.FLOAT, allowNull: false },
+  deliveryFee: { type: DataTypes.FLOAT, defaultValue: 0 },
+  discount: { type: DataTypes.FLOAT, defaultValue: 0 },
+  totalAmount: { type: DataTypes.FLOAT, allowNull: false },
+  
+  // Logística
+  distanceKm: { type: DataTypes.FLOAT },
+  estimatedTimeMin: { type: DataTypes.INTEGER },
+  deliveryAddress: { type: DataTypes.JSONB },
+  deliveryType: { type: DataTypes.ENUM('standard', 'express', 'scheduled'), defaultValue: 'standard' },
+  
+  // Preferências
+  substitutionPreference: { 
+    type: DataTypes.ENUM('substitute', 'refund', 'contact'), 
+    defaultValue: 'substitute' 
+  },
+  
+  // Códigos
+  confirmationCode: { type: DataTypes.STRING(4) }, // Para entregar
+  
+  // Flags
+  reviewedByClient: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reviewedByDriver: { type: DataTypes.BOOLEAN, defaultValue: false }
 });
 
-// Relacionamentos de Pedido
-User.hasMany(Order, { foreignKey: 'customerId', as: 'customer' });
-Order.belongsTo(User, { foreignKey: 'customerId', as: 'customer' });
+const OrderItem = sequelize.define('OrderItem', {
+  quantity: { type: DataTypes.INTEGER, allowNull: false },
+  priceAtPurchase: { type: DataTypes.FLOAT, allowNull: false }, // Preço congelado no momento da compra
+  notes: { type: DataTypes.STRING }
+});
 
-Driver.hasMany(Order, { foreignKey: 'driverId', as: 'driver' });
-Order.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
+Order.belongsTo(Customer);
+Customer.hasMany(Order);
 
-Market.hasMany(Order);
-Order.belongsTo(Market);
+Order.belongsTo(Vendor); // Alias Market
+Vendor.hasMany(Order);
 
-// Order Items
-Order.hasMany(OrderItem);
+Order.belongsTo(Driver); // Driver pode ser nulo inicialmente
+Driver.hasMany(Order);
+
 OrderItem.belongsTo(Order);
-Product.hasMany(OrderItem);
+Order.hasMany(OrderItem);
+
 OrderItem.belongsTo(Product);
 
-// Payouts
-Order.hasOne(Payout);
-Payout.belongsTo(Order);
+/**
+ * ==========================================================
+ * 5. SISTEMA BANCÁRIO DO MERCAFÁCIL (ATUALIZADO)
+ * ==========================================================
+ */
 
-Driver.hasMany(Payout);
+// 5.1 Transactions (Entrada de dinheiro dos Clientes)
+const Transaction = sequelize.define('Transaction', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  paymentMethod: { type: DataTypes.ENUM('pix', 'card'), allowNull: false },
+  amount: { type: DataTypes.FLOAT, allowNull: false },
+  status: { type: DataTypes.ENUM('pending', 'confirmed', 'failed', 'refunded'), defaultValue: 'pending' },
+  transactionDate: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+});
+
+Transaction.belongsTo(Order);
+Order.hasOne(Transaction);
+Transaction.belongsTo(Customer);
+
+// 5.2 Wallet (Carteira Unificada para Customer, Driver, Vendor)
+// Usamos uma tabela para permitir flexibilidade, mas no Customer temos 'balance' direto.
+// Vamos focar no Wallet para o histórico e para Vendor/Driver consolidado.
+const Wallet = sequelize.define('Wallet', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  ownerType: { type: DataTypes.ENUM('customer', 'driver', 'vendor'), allowNull: false },
+  ownerId: { type: DataTypes.UUID, allowNull: false }, // ID do Customer, Driver ou Vendor
+  balance: { type: DataTypes.FLOAT, defaultValue: 0.00 }
+});
+
+// 5.3 Wallet Movements (Extrato / Histórico)
+const WalletMovement = sequelize.define('WalletMovement', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  type: { type: DataTypes.ENUM('cashback', 'purchase', 'payout', 'deposit', 'withdrawal', 'fee'), allowNull: false },
+  amount: { type: DataTypes.FLOAT, allowNull: false },
+  description: { type: DataTypes.STRING },
+  direction: { type: DataTypes.ENUM('in', 'out'), allowNull: false } // Entrada ou Saída
+});
+
+WalletMovement.belongsTo(Wallet);
+Wallet.hasMany(WalletMovement);
+
+// 5.4 Payouts (Repasse Automático 80/10/10)
+const Payout = sequelize.define('Payout', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  
+  // Valores do Split
+  amountDriver: { type: DataTypes.FLOAT, defaultValue: 0 },
+  amountVendor: { type: DataTypes.FLOAT, defaultValue: 0 },
+  amountPlatform: { type: DataTypes.FLOAT, defaultValue: 0 }, // Revenue
+  
+  status: { type: DataTypes.ENUM('pending', 'processing', 'paid'), defaultValue: 'pending' },
+  paidAt: { type: DataTypes.DATE }
+});
+
+Payout.belongsTo(Transaction);
+Transaction.hasOne(Payout);
+
 Payout.belongsTo(Driver);
+Payout.belongsTo(Vendor);
 
-// Entregas
-Order.hasOne(Delivery);
-Delivery.belongsTo(Order);
-Driver.hasMany(Delivery);
-Delivery.belongsTo(Driver);
+// 5.5 Platform Revenue (Receita da Plataforma)
+const PlatformRevenue = sequelize.define('PlatformRevenue', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  source: { type: DataTypes.ENUM('order_commission', 'delivery_fee_share', 'subscription', 'ad'), defaultValue: 'order_commission' },
+  amount: { type: DataTypes.FLOAT, allowNull: false }
+});
 
+PlatformRevenue.belongsTo(Transaction);
+
+/**
+ * ==========================================================
+ * 6. GAMIFICAÇÃO E ENGAJAMENTO
+ * ==========================================================
+ */
+
+// Listas Inteligentes
+const SmartList = sequelize.define('SmartList', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  type: { type: DataTypes.ENUM('manual', 'ai_suggestion', 'history'), defaultValue: 'manual' },
+  isPublic: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
+const SmartListItem = sequelize.define('SmartListItem', {
+  quantity: { type: DataTypes.INTEGER, defaultValue: 1 }
+});
+
+SmartList.belongsTo(Customer);
+SmartList.belongsToMany(Product, { through: SmartListItem });
+Product.belongsToMany(SmartList, { through: SmartListItem });
+
+// Missões
+const Mission = sequelize.define('Mission', {
+  title: { type: DataTypes.STRING },
+  description: { type: DataTypes.STRING },
+  target: { type: DataTypes.INTEGER },
+  rewardPoints: { type: DataTypes.INTEGER },
+  type: { type: DataTypes.ENUM('order_count', 'spend', 'review', 'referral') },
+  icon: { type: DataTypes.STRING }
+});
+
+const UserMission = sequelize.define('UserMission', {
+  currentProgress: { type: DataTypes.INTEGER, defaultValue: 0 },
+  completed: { type: DataTypes.BOOLEAN, defaultValue: false },
+  completedAt: { type: DataTypes.DATE }
+});
+
+Mission.belongsToMany(Customer, { through: UserMission });
+Customer.belongsToMany(Mission, { through: UserMission });
+
+// Avaliações
+const Review = sequelize.define('Review', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  rating: { type: DataTypes.INTEGER, validate: { min: 1, max: 5 } },
+  comment: { type: DataTypes.TEXT },
+  reviewerRole: { type: DataTypes.ENUM('client', 'driver') },
+  targetRole: { type: DataTypes.ENUM('market', 'driver', 'client') },
+  targetId: { type: DataTypes.STRING } 
+});
+
+Review.belongsTo(Order); 
+
+/**
+ * ==========================================================
+ * 7. SUPORTE E CHAT (IA)
+ * ==========================================================
+ */
+
+const ChatSession = sequelize.define('ChatSession', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+});
+
+const ChatMessage = sequelize.define('ChatMessage', {
+  sender: { type: DataTypes.ENUM('user', 'bot', 'support') },
+  content: { type: DataTypes.TEXT },
+  metadata: { type: DataTypes.JSONB } // Para armazenar payload da IA
+});
+
+ChatSession.belongsTo(User);
+ChatSession.hasMany(ChatMessage);
+ChatMessage.belongsTo(ChatSession);
+
+// Exportar tudo
 module.exports = {
   sequelize,
   Municipality,
-  Market,
-  Product,
+  Role, Permission, RolePermission,
   User,
-  Driver,
-  Order,
-  OrderItem,
-  Payout,
-  Delivery
+  Customer, Driver, Vendor,
+  Category, Product,
+  Order, OrderItem,
+  Transaction, Payout, Wallet, WalletMovement, PlatformRevenue, // Banking Exports
+  SmartList, SmartListItem,
+  Mission, UserMission,
+  Review,
+  ChatSession, ChatMessage
 };

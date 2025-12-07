@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
-import { Bike, CheckCircle, MapPin, DollarSign, Package, Clock, Car, Footprints, Trophy, Medal, Crown } from 'lucide-react';
+import { Bike, CheckCircle, MapPin, Package, Clock, Car, Footprints, Trophy, Camera, Navigation, Star, TrendingUp, AlertTriangle, ChevronRight, Zap, Target, Users, Map, Wallet, Filter } from 'lucide-react';
 import { Button } from './Button';
 import { Driver, Order, VehicleType, DriverLevel } from '../types';
+import { ReviewModal } from './ReviewModal';
 
 interface DriverDashboardProps {
   driver: Driver;
@@ -9,8 +11,9 @@ interface DriverDashboardProps {
   onAcceptOrder: (orderId: string) => void;
   onDeliverOrder: (orderId: string) => void;
   currentOrderId?: string;
-  orders: Order[]; // Full list to find current order
-  allDrivers: Driver[]; // For Leaderboard
+  orders: Order[];
+  allDrivers: Driver[];
+  onReferralClick: () => void;
 }
 
 export const DriverDashboard: React.FC<DriverDashboardProps> = ({
@@ -20,250 +23,387 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({
   onDeliverOrder,
   currentOrderId,
   orders,
-  allDrivers
+  allDrivers,
+  onReferralClick
 }) => {
-  const [activeTab, setActiveTab] = useState<'work' | 'ranking'>('work');
-  const currentOrder = orders.find(o => o.id === currentOrderId);
+  const [activeTab, setActiveTab] = useState<'work' | 'history'>('work');
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [proofPhoto, setProofPhoto] = useState<string | null>(null);
+  const [radius, setRadius] = useState(5); // km
+  
+  // Review state for driver
+  const [showReview, setShowReview] = useState(false);
+  const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
 
-  // Filter available orders by driver's municipality
-  const localOrders = availableOrders.filter(o => o.municipality === driver.municipality);
+  const currentOrder = orders.find(o => o.id === currentOrderId);
+  
+  // Filter by distance/radius and municipality
+  const filteredOrders = availableOrders.filter(o => 
+    o.municipality === driver.municipality && 
+    (o.distanceKm || 0) <= radius
+  );
+
+  const calculateEstimate = (distanceKm: number, vehicle: VehicleType) => {
+    let base = 0;
+    let rate = 0;
+
+    switch (vehicle) {
+        case 'motorcycle': base = 4.00; rate = 1.20; break;
+        case 'car': base = 6.00; rate = 1.50; break;
+        case 'bike': base = 3.00; rate = 0.80; break;
+        case 'walking': base = 2.00; rate = 0.50; break;
+    }
+    
+    const dist = Math.max(1, distanceKm);
+    let total = base + (dist * rate);
+    
+    // Level Multiplier (Display only)
+    if(driver.level === 'Prata') total *= 1.05;
+    if(driver.level === 'Ouro') total *= 1.05;
+    if(driver.level === 'Platina') total *= 1.10;
+
+    return Math.round(total * 100) / 100;
+  };
+
+  const handleFinishDelivery = () => {
+      if(!currentOrder) return;
+      if(!proofPhoto) {
+          alert("Tire uma foto do pacote para comprovar a entrega.");
+          return;
+      }
+      
+      const orderId = currentOrder.id;
+      onDeliverOrder(orderId);
+      setIsFinishing(false);
+      setProofPhoto(null);
+      
+      // Trigger review modal for driver to rate customer/market
+      setCompletedOrderId(orderId);
+      setShowReview(true);
+  };
+
+  const handleSubmitReview = (rating: number, comment: string) => {
+      // In a real app, send to API with orderId
+      console.log(`Driver reviewed order ${completedOrderId}: ${rating} stars. "${comment}"`);
+      setShowReview(false);
+      setCompletedOrderId(null);
+  };
 
   const getVehicleIcon = (type: VehicleType, size: number = 20) => {
     switch(type) {
         case 'car': return <Car size={size} />;
         case 'bike': return <Bike size={size} />;
         case 'walking': return <Footprints size={size} />;
-        default: return <Bike size={size} />; // Motorcycle fallback
+        default: return <Bike size={size} />;
     }
   };
 
   const getLevelColor = (level: DriverLevel) => {
-    switch(level) {
-        case 'Platina': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-        case 'Ouro': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-        case 'Prata': return 'bg-gray-100 text-gray-700 border-gray-200';
-        default: return 'bg-orange-100 text-orange-800 border-orange-200';
-    }
+      switch(level) {
+          case 'Bronze': return 'from-orange-700 to-orange-900';
+          case 'Prata': return 'from-gray-400 to-gray-600';
+          case 'Ouro': return 'from-yellow-500 to-yellow-700';
+          case 'Platina': return 'from-cyan-500 to-blue-700';
+      }
   };
-
-  const getPointsToNextLevel = (points: number) => {
-    if(points >= 600) return 0; // Max level
-    if(points >= 300) return 600 - points;
-    if(points >= 100) return 300 - points;
-    return 100 - points;
-  };
-
-  const nextLevelName = (points: number) => {
-    if(points >= 600) return 'Max';
-    if(points >= 300) return 'Platina';
-    if(points >= 100) return 'Ouro';
-    return 'Prata';
-  };
-
-  const sortedDrivers = [...allDrivers].sort((a, b) => b.points - a.points);
 
   return (
-    <div className="space-y-6">
-      {/* Driver Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 relative">
-            {getVehicleIcon(driver.vehicleType, 32)}
-            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center border-2 border-white text-xs font-bold ${
-                driver.level === 'Platina' ? 'bg-cyan-500 text-white' : 
-                driver.level === 'Ouro' ? 'bg-yellow-400 text-white' : 
-                driver.level === 'Prata' ? 'bg-gray-400 text-white' : 'bg-orange-400 text-white'
-            }`}>
-                {driver.level[0]}
-            </div>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{driver.name}</h2>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${driver.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                {driver.status === 'available' ? 'Disponível' : 'Em Rota'}
-              </span>
-              <span>•</span>
-              <MapPin size={14} />
-              <span>{driver.municipality}</span>
-            </div>
-          </div>
+    <div className="space-y-6 max-w-3xl mx-auto">
+      
+      {/* 1. GAMIFIED HERO HEADER */}
+      <div className={`bg-gradient-to-r ${getLevelColor(driver.level)} text-white rounded-3xl p-6 shadow-xl relative overflow-hidden`}>
+        <div className="absolute top-0 right-0 p-6 opacity-10">
+            <Trophy size={180} />
         </div>
         
-        <div className="flex gap-4">
-            <div className={`px-4 py-2 rounded-xl border flex flex-col items-center min-w-[100px] ${getLevelColor(driver.level)}`}>
-                <p className="text-xs font-medium uppercase tracking-wide">Nível</p>
-                <p className="text-xl font-bold">{driver.level}</p>
-            </div>
-            <div className="bg-green-50 px-6 py-2 rounded-xl border border-green-100 flex flex-col items-center min-w-[100px]">
-                <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Ganhos</p>
-                <p className="text-xl font-bold text-green-700">R$ {driver.earnings.toFixed(2)}</p>
-            </div>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <div className="flex justify-between items-end mb-2">
-            <div>
-                <span className="text-sm font-bold text-gray-700">{driver.points} pts</span>
-                <span className="text-xs text-gray-500 ml-1">(Total)</span>
-            </div>
-            <div className="text-xs text-gray-500">
-                {getPointsToNextLevel(driver.points) > 0 
-                 ? `Faltam ${getPointsToNextLevel(driver.points)} pts para ${nextLevelName(driver.points)}` 
-                 : 'Nível Máximo Alcançado!'}
-            </div>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div className="bg-orange-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min((driver.points % 300) / 3, 100)}%` }}></div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        <button 
-            onClick={() => setActiveTab('work')}
-            className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'work' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-            Minhas Entregas
-        </button>
-        <button 
-            onClick={() => setActiveTab('ranking')}
-            className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'ranking' ? 'border-orange-600 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-            Ranking & Prêmios
-        </button>
-      </div>
-
-      {activeTab === 'work' ? (
-        <>
-            {/* Active Order */}
-            {currentOrder && (
-                <div className="bg-orange-50 rounded-xl border border-orange-200 p-6 animate-pulse-slow">
-                <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
-                    <Clock size={20} />
-                    Pedido em Andamento
-                </h3>
-                <div className="bg-white rounded-lg p-4 shadow-sm mb-4">
-                    <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-lg">#{currentOrder.id.slice(-4)}</span>
-                    <span className="text-green-600 font-bold">R$ {currentOrder.commission.driver.toFixed(2)}</span>
-                    </div>
-                    <p className="text-gray-600 mb-1">Cliente: {currentOrder.customerName}</p>
-                    <p className="text-gray-500 text-sm mb-3">{currentOrder.items.length} itens • Total: R$ {currentOrder.total.toFixed(2)}</p>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 p-2 rounded">
-                    <MapPin size={16} />
-                    <span>Distância: {currentOrder.distanceKm} km • Tempo Estimado: {currentOrder.estimatedDeliveryTime} min</span>
+        {/* Top Row: Identification */}
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+            <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-2 border-white/50">
+                    {getVehicleIcon(driver.vehicleType, 28)}
+                </div>
+                <div>
+                    <h2 className="font-bold text-xl">{driver.name}</h2>
+                    <div className="flex items-center gap-2 text-sm text-white/90">
+                        <span className="bg-black/30 px-3 py-1 rounded-full font-bold uppercase tracking-wider text-xs">
+                            {driver.level}
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <Star size={14} className="text-yellow-300 fill-yellow-300" />
+                            <span>{driver.rating.toFixed(1)}</span>
+                        </div>
                     </div>
                 </div>
-                <Button 
-                    onClick={() => onDeliverOrder(currentOrder.id)} 
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                    size="lg"
-                >
-                    <CheckCircle className="mr-2" />
-                    Confirmar Entrega
-                </Button>
+            </div>
+            
+            <div className="bg-black/20 p-4 rounded-xl backdrop-blur-sm text-center min-w-[140px]">
+                <p className="text-xs text-white/70 uppercase tracking-wider mb-1">Saldo Atual</p>
+                <p className="text-2xl font-black">R$ {driver.earnings.toFixed(2)}</p>
+            </div>
+        </div>
+
+        {/* Level Progress */}
+        <div className="bg-black/20 rounded-xl p-4 border border-white/10 relative overflow-hidden">
+            <div className="flex justify-between items-center mb-2 text-xs font-bold uppercase tracking-wide">
+                <span>Progresso Próximo Nível</span>
+                <span>{driver.deliveriesCompleted} / 50 Entregas</span>
+            </div>
+            <div className="w-full bg-black/30 h-3 rounded-full overflow-hidden">
+                <div 
+                    className="bg-white h-full transition-all duration-1000 shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                    style={{width: `${Math.min((driver.deliveriesCompleted / 50) * 100, 100)}%`}}
+                ></div>
+            </div>
+            <div className="flex justify-between mt-2 text-[10px] text-white/60">
+                <span>Nível Atual: {driver.level}</span>
+                <span>Meta: Platina (50 Entregas)</span>
+            </div>
+        </div>
+      </div>
+
+      {/* 2. MAIN TABS */}
+      <div className="flex p-1 bg-white border border-gray-200 rounded-xl shadow-sm">
+        <button 
+            onClick={() => setActiveTab('work')} 
+            className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'work' ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+            <Map size={18} /> Painel de Entregas
+        </button>
+        <button 
+            onClick={() => setActiveTab('history')} 
+            className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'history' ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+            <Wallet size={18} /> Extrato & Ganhos
+        </button>
+      </div>
+
+      {activeTab === 'work' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+            
+            {/* Active Order Card */}
+            {currentOrder && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-6 shadow-sm relative overflow-hidden animate-pulse-slow">
+                    <div className="absolute top-0 right-0 bg-green-600 text-white text-[10px] font-bold px-4 py-1 rounded-bl-xl shadow-sm">
+                        EM ROTA
+                    </div>
+                    
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 className="font-bold text-xl text-gray-900">Pedido #{currentOrder.id.slice(-4)}</h3>
+                            <div className="text-sm text-green-700 mt-1 flex items-center gap-1 font-medium">
+                                <TrendingUp size={16} /> Ganhos Estimados: 
+                                <span className="font-black text-xl ml-1">R$ {calculateEstimate(currentOrder.distanceKm || 2, driver.vehicleType).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 mb-6 bg-white p-4 rounded-xl border border-green-100 shadow-sm">
+                        <div className="flex items-start gap-4 relative">
+                            <div className="flex flex-col items-center">
+                                <div className="w-4 h-4 bg-blue-500 rounded-full ring-4 ring-blue-100"></div>
+                                <div className="w-0.5 h-10 bg-gray-300 my-1"></div>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Coleta</p>
+                                <p className="font-bold text-gray-900 text-lg">Mercado Central</p>
+                                <p className="text-xs text-gray-500">Rua Principal, 123</p>
+                            </div>
+                        </div>
+                         <div className="flex items-start gap-4">
+                            <div className="w-4 h-4 bg-orange-500 rounded-full ring-4 ring-orange-100 shrink-0"></div>
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Entrega</p>
+                                <p className="font-bold text-gray-900 text-lg">{currentOrder.customerName}</p>
+                                <p className="text-sm text-gray-600">{currentOrder.municipality} - {currentOrder.distanceKm}km</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                         <Button className="flex-1 bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 py-3" onClick={() => window.open(`https://maps.google.com/?q=${currentOrder.municipality}`, '_blank')}>
+                            <Navigation size={20} className="mr-2"/> Rota GPS
+                        </Button>
+                        <Button 
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-200 py-3" 
+                            onClick={() => setIsFinishing(true)}
+                        >
+                            Finalizar Entrega <ChevronRight size={20} />
+                        </Button>
+                    </div>
                 </div>
             )}
 
-            {/* Available Orders List */}
+            {/* Filter & Available Orders */}
             {!currentOrder && (
                 <div>
-                <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                    <Package size={20} />
-                    Pedidos Disponíveis em {driver.municipality}
-                </h3>
-                
-                {localOrders.length === 0 ? (
-                    <div className="bg-white rounded-xl p-12 text-center text-gray-500 border border-gray-100 border-dashed">
-                    <p>Nenhum pedido aguardando entrega no momento.</p>
-                    <p className="text-sm mt-2">Fique atento, novas entregas aparecem aqui.</p>
-                    </div>
-                ) : (
-                    <div className="grid gap-4">
-                    {localOrders.map(order => (
-                        <div key={order.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-gray-900">Pedido #{order.id.slice(-4)}</span>
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                                {new Date(order.createdAt).toLocaleTimeString()}
-                            </span>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-1">
-                            {order.items.map(i => i.name).join(', ').slice(0, 50)}...
-                            </p>
-                            <div className="flex items-center gap-4 text-sm mt-2">
-                            <span className="text-green-600 font-bold flex items-center gap-1">
-                                <DollarSign size={14} />
-                                Ganho: R$ {order.commission.driver.toFixed(2)}
-                            </span>
-                            <span className="text-gray-400">|</span>
-                            <span>{order.distanceKm} km (aprox. {order.estimatedDeliveryTime} min)</span>
-                            </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                            <Package size={20} className="text-orange-600" />
+                            Disponíveis ({filteredOrders.length})
+                        </h3>
+                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+                            <Filter size={14} className="text-gray-400" />
+                            <span className="text-xs text-gray-600 font-medium">Raio: {radius} km</span>
+                            <input 
+                                type="range" 
+                                min="1" max="20" 
+                                value={radius} 
+                                onChange={(e) => setRadius(Number(e.target.value))}
+                                className="w-20 accent-orange-600 cursor-pointer" 
+                            />
                         </div>
-                        <Button onClick={() => onAcceptOrder(order.id)}>
-                            Aceitar Entrega
-                        </Button>
-                        </div>
-                    ))}
                     </div>
-                )}
+                    
+                    {filteredOrders.length === 0 ? (
+                        <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-200">
+                             <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                                <Clock className="text-orange-400" size={40} />
+                             </div>
+                             <h4 className="text-gray-900 font-bold">Procurando entregas...</h4>
+                             <p className="text-sm text-gray-500 mt-1 px-8">Nenhum pedido encontrado num raio de {radius}km em {driver.municipality}. Aumente o raio ou aguarde.</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4">
+                            {filteredOrders.map(order => {
+                                const earning = calculateEstimate(order.distanceKm || 2, driver.vehicleType);
+                                const isHighPay = earning > 10.00;
+                                
+                                return (
+                                    <div key={order.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                                        {isHighPay && <div className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-3 py-1 rounded-bl-lg">ALTA DEMANDA</div>}
+                                        
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex gap-4">
+                                                <div className="bg-gray-100 p-3 rounded-xl h-fit">
+                                                    <Package size={24} className="text-gray-600" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="font-bold text-gray-900 text-lg">R$ {earning.toFixed(2)}</h4>
+                                                        {order.deliveryType === 'express' && (
+                                                            <Zap size={14} className="text-orange-500 fill-orange-500" />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                                        <MapPin size={12} /> {order.distanceKm} km • {order.items.length} itens
+                                                    </p>
+                                                    <p className="text-xs text-gray-400 mt-0.5">
+                                                        {order.municipality} • Bairro Centro
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Button 
+                                                className="bg-black text-white hover:bg-gray-800 px-6 py-2 rounded-lg font-bold text-sm shadow-lg transform group-hover:scale-105 transition-transform" 
+                                                onClick={() => onAcceptOrder(order.id)}
+                                            >
+                                                Aceitar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
-        </>
-      ) : (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-orange-50 border border-orange-100 p-4 rounded-xl flex items-center gap-3">
-                    <div className="bg-orange-200 p-2 rounded-full text-orange-700"><Trophy size={20}/></div>
-                    <div>
-                        <p className="text-xs text-orange-800 uppercase font-bold">Prêmio Ouro</p>
-                        <p className="text-sm">Bônus de R$ 50,00</p>
-                    </div>
-                </div>
-                <div className="bg-cyan-50 border border-cyan-100 p-4 rounded-xl flex items-center gap-3">
-                    <div className="bg-cyan-200 p-2 rounded-full text-cyan-700"><Crown size={20}/></div>
-                    <div>
-                        <p className="text-xs text-cyan-800 uppercase font-bold">Prêmio Platina</p>
-                        <p className="text-sm">Kit Mercafácil VIP</p>
-                    </div>
-                </div>
-            </div>
+        </div>
+      )}
+      
+      {/* HISTORY TAB */}
+      {activeTab === 'history' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-in fade-in">
+              <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2 text-lg">
+                  <TrendingUp className="text-green-600" /> Resumo Financeiro
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                  <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                      <p className="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Ganhos Hoje</p>
+                      <p className="text-2xl font-black text-green-700">R$ {(driver.earnings * 0.15).toFixed(2)}</p>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                      <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Total Semana</p>
+                      <p className="text-2xl font-black text-blue-700">R$ {driver.earnings.toFixed(2)}</p>
+                  </div>
+              </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-4 border-b border-gray-100 font-bold text-gray-800">Top Entregadores (Geral)</div>
-                <div className="divide-y divide-gray-100">
-                    {sortedDrivers.map((d, index) => (
-                        <div key={d.id} className={`p-4 flex items-center justify-between ${d.id === driver.id ? 'bg-orange-50' : ''}`}>
-                            <div className="flex items-center gap-4">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                                    index === 0 ? 'bg-yellow-100 text-yellow-700' :
-                                    index === 1 ? 'bg-gray-100 text-gray-700' :
-                                    index === 2 ? 'bg-orange-100 text-orange-800' : 'text-gray-500'
-                                }`}>
-                                    {index + 1}
+              <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2">Últimas Atividades</h4>
+                  {(driver.earningsHistory || []).slice().reverse().map((entry, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-green-100 p-2 rounded-full text-green-600">
+                                  <CheckCircle size={16} />
+                              </div>
+                              <div>
+                                  <p className="font-bold text-sm text-gray-900">{entry.type}</p>
+                                  <p className="text-xs text-gray-500">{entry.date}</p>
+                              </div>
+                          </div>
+                          <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded text-sm">+ R$ {entry.amount.toFixed(2)}</span>
+                      </div>
+                  ))}
+                  {(!driver.earningsHistory || driver.earningsHistory.length === 0) && (
+                      <p className="text-center text-gray-400 text-sm py-8 italic">Você ainda não realizou entregas.</p>
+                  )}
+              </div>
+          </div>
+      )}
+
+      {/* Finish Delivery Modal */}
+      {isFinishing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+                <div className="p-6 text-center">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
+                        <Camera size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">Comprovante de Entrega</h3>
+                    <p className="text-gray-500 text-sm mb-6">Para liberar seu pagamento, tire uma foto do pacote entregue.</p>
+                    
+                    <div 
+                        onClick={() => setProofPhoto("https://placehold.co/400x300/e2e8f0/94a3b8?text=Foto+Comprovante")}
+                        className={`border-2 border-dashed rounded-xl aspect-video flex flex-col items-center justify-center cursor-pointer transition-colors mb-6 relative overflow-hidden group ${proofPhoto ? 'border-green-500' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}`}
+                    >
+                        {proofPhoto ? (
+                            <>
+                                <img src={proofPhoto} className="absolute inset-0 w-full h-full object-cover" alt="Proof" />
+                                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                                    <CheckCircle className="text-white" size={48} />
                                 </div>
-                                <div>
-                                    <p className={`font-medium ${d.id === driver.id ? 'text-orange-700' : 'text-gray-900'}`}>
-                                        {d.name} {d.id === driver.id && '(Você)'}
-                                    </p>
-                                    <p className="text-xs text-gray-500">{d.municipality} • {d.level}</p>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="font-bold text-gray-900">{d.points} pts</p>
-                                <div className="text-xs text-gray-400 flex items-center justify-end gap-1">
-                                    {getVehicleIcon(d.vehicleType, 12)}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                            </>
+                        ) : (
+                            <>
+                                <Camera size={32} className="text-gray-400 mb-2" />
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Tocar para fotografar</span>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex gap-3">
+                        <Button variant="outline" className="flex-1" onClick={() => setIsFinishing(false)}>Cancelar</Button>
+                        <Button 
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-md" 
+                            disabled={!proofPhoto}
+                            onClick={handleFinishDelivery}
+                        >
+                            Confirmar
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>
+      )}
+
+      {/* Driver Review Modal */}
+      {showReview && (
+          <ReviewModal 
+            isOpen={showReview}
+            onClose={() => setShowReview(false)}
+            onSubmit={handleSubmitReview}
+            targetName="Cliente / Mercado"
+            targetRole="Cliente"
+          />
       )}
     </div>
   );

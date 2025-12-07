@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -7,12 +8,17 @@ export function AuthProvider({ children }) {
   const [auth, setAuth] = useState({ token: null, user: null, loading: true });
 
   useEffect(() => {
-    AsyncStorage.getItem('mercafacil-auth')
-      .then(json => {
-        if (json) setAuth(JSON.parse(json));
-      })
-      .catch(err => console.log('Auth storage error:', err))
-      .finally(() => setAuth(a => ({ ...a, loading: false })));
+    const load = async () => {
+        try {
+            const json = await AsyncStorage.getItem('mercafacil-auth');
+            if (json) setAuth(JSON.parse(json));
+        } catch (e) {
+            console.log('Auth storage load error');
+        } finally {
+            setAuth(a => ({ ...a, loading: false }));
+        }
+    };
+    load();
   }, []);
 
   const signIn = async (token, user) => {

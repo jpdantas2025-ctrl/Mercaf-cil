@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ShoppingCart, Search, MapPin, Store, Home, Mic, MicOff, Bike, LayoutDashboard, UserPlus, LogIn } from 'lucide-react';
+
+import React, { useState, useRef } from 'react';
+import { ShoppingCart, Search, MapPin, Store, Home, Mic, MicOff, Bike, LayoutDashboard, UserPlus, LogIn, HelpCircle } from 'lucide-react';
 import { ViewState, Municipality } from '../types';
 import { MUNICIPALITIES } from '../constants';
 
@@ -12,7 +13,9 @@ interface LayoutProps {
   onSearchChange: (query: string) => void;
   selectedMunicipality: string;
   onMunicipalityChange: (muni: string) => void;
-  onRegisterClick: () => void; // New prop for registration modal
+  onRegisterClick: () => void;
+  onHelpClick: () => void;
+  onFooterLinkClick: (link: string) => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ 
@@ -24,11 +27,21 @@ export const Layout: React.FC<LayoutProps> = ({
   onSearchChange,
   selectedMunicipality,
   onMunicipalityChange,
-  onRegisterClick
+  onRegisterClick,
+  onHelpClick,
+  onFooterLinkClick
 }) => {
   const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
-  const startListening = () => {
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      return;
+    }
+
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
@@ -54,6 +67,7 @@ export const Layout: React.FC<LayoutProps> = ({
         setIsListening(false);
       };
 
+      recognitionRef.current = recognition;
       recognition.start();
     } else {
       alert("Seu navegador não suporta reconhecimento de voz.");
@@ -85,9 +99,11 @@ export const Layout: React.FC<LayoutProps> = ({
               className="flex items-center gap-2 cursor-pointer self-start sm:self-auto hover:opacity-90 transition-opacity"
               onClick={() => setView(ViewState.HOME)}
             >
-              <div className="bg-white text-orange-600 p-1.5 rounded-lg font-bold text-xl tracking-tighter">
-                MF
-              </div>
+              <img 
+                src="https://placehold.co/100x100/ffffff/ea580c?text=MF" 
+                alt="Mercafácil Logo" 
+                className="w-10 h-10 rounded-lg object-contain"
+              />
               <div>
                 <h1 className="font-bold text-xl leading-none">Mercafácil</h1>
                 <span className="text-[10px] opacity-90 block tracking-wider">RORAIMA</span>
@@ -122,9 +138,9 @@ export const Layout: React.FC<LayoutProps> = ({
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button 
-                  onClick={startListening}
+                  onClick={toggleListening}
                   className={`p-2 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse scale-110' : 'text-gray-400 hover:text-orange-600 hover:bg-orange-50'}`}
-                  title="Buscar por voz"
+                  title={isListening ? "Parar de ouvir" : "Buscar por voz"}
                 >
                   {isListening ? <MicOff size={16} /> : <Mic size={16} />}
                 </button>
@@ -137,6 +153,16 @@ export const Layout: React.FC<LayoutProps> = ({
 
             {/* Actions */}
             <div className="flex items-center gap-3 sm:gap-4 self-end sm:self-auto">
+              
+              {/* Help Button */}
+              <button 
+                onClick={onHelpClick}
+                className="p-2 text-orange-100 hover:text-white hover:bg-orange-700 rounded-full transition-colors"
+                title="Central de Ajuda"
+              >
+                <HelpCircle size={24} />
+              </button>
+
               {/* Register / Sign In Buttons */}
               <button 
                 onClick={onRegisterClick}
@@ -173,19 +199,19 @@ export const Layout: React.FC<LayoutProps> = ({
           <div>
             <h3 className="text-white font-bold mb-4">ATENDIMENTO</h3>
             <ul className="space-y-2">
-              <li>Central de Ajuda</li>
-              <li>Como Comprar</li>
-              <li>Métodos de Pagamento</li>
-              <li>Garantia Mercafácil</li>
+              <li><button onClick={onHelpClick} className="hover:text-white">Central de Ajuda</button></li>
+              <li><button onClick={onHelpClick} className="hover:text-white">Como Comprar</button></li>
+              <li><button onClick={onHelpClick} className="hover:text-white">Métodos de Pagamento</button></li>
+              <li><button onClick={onHelpClick} className="hover:text-white">Garantia Mercafácil</button></li>
             </ul>
           </div>
           <div>
             <h3 className="text-white font-bold mb-4">SOBRE</h3>
             <ul className="space-y-2">
-              <li>Sobre o Mercafácil</li>
-              <li>Políticas de Privacidade</li>
-              <li>Programa de Afiliados</li>
-              <li>Ofertas Relâmpago</li>
+              <li><button onClick={() => onFooterLinkClick('about')} className="hover:text-white">Sobre o Mercafácil</button></li>
+              <li><button onClick={() => onFooterLinkClick('privacy')} className="hover:text-white">Políticas de Privacidade</button></li>
+              <li><button onClick={() => onFooterLinkClick('affiliates')} className="hover:text-white">Programa de Afiliados</button></li>
+              <li><button onClick={() => onFooterLinkClick('flash')} className="hover:text-white">Ofertas Relâmpago</button></li>
             </ul>
           </div>
           <div>
@@ -208,7 +234,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
         
         <div className="border-t border-gray-800 pt-8 text-center">
-          <p className="text-base text-gray-500 mb-2">© 2024 Mercafácil Roraima. Todos os direitos reservados.</p>
+          <p className="text-base text-gray-500 mb-2">© 2025 Mercafácil Roraima. Todos os direitos reservados.</p>
           <div className="mt-4 inline-block px-6 py-2 border border-gray-700 rounded-full bg-gray-800/50">
             <span className="text-gray-400">Desenvolvido por </span>
             <span className="text-orange-500 font-bold">João Paulo Silva Dantas</span>
@@ -250,11 +276,11 @@ export const Layout: React.FC<LayoutProps> = ({
           <span className="text-[10px]">Entregas</span>
         </button>
         <button 
-          onClick={() => setView(ViewState.ADMIN)}
-          className={`flex flex-col items-center gap-1 ${currentView === ViewState.ADMIN ? 'text-orange-600' : 'text-gray-400'}`}
+          onClick={onHelpClick}
+          className="flex flex-col items-center gap-1 text-gray-400"
         >
-          <LayoutDashboard size={20} />
-          <span className="text-[10px]">Admin</span>
+          <HelpCircle size={20} />
+          <span className="text-[10px]">Ajuda</span>
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 const express = require('express');
-const { Driver } = require('../models');
+const { Driver, Role } = require('../models');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const router = express.Router();
 
@@ -7,14 +7,19 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { name, motorcyclePlate, phone, vehicleType } = req.body;
-    // Default status is now 'pending' for approval workflow
+    
+    // Find 'entregador' role
+    const role = await Role.findOne({ where: { name: 'entregador' } });
+    
     const driver = await Driver.create({ 
         name, 
         motorcyclePlate, 
         phone, 
         status: 'pending', 
-        vehicleType: vehicleType || 'motorcycle' // default
+        vehicleType: vehicleType || 'motorcycle',
+        RoleId: role ? role.id : null
     });
+    
     res.status(201).json(driver);
   } catch (err) {
     console.error(err);

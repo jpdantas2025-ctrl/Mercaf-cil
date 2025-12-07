@@ -31,18 +31,26 @@ export const ChatAssistant: React.FC = () => {
       timestamp: new Date()
     };
 
+    // Optimistically add user message to UI
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
 
     try {
       // Prepare history for API
-      const history = messages.map(m => ({
+      // 1. We must NOT include the message we are currently sending (userMsg) in the history 
+      //    passed to chats.create(), because chat.sendMessage() handles the current turn.
+      // 2. We should exclude the initial static greeting (id: '0') from the history sent to the API,
+      //    as the API often expects the history to start with a user message or valid turn structure.
+      
+      const historyMessages = messages.filter(m => m.id !== '0');
+      
+      const currentHistory = historyMessages.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
 
-      const responseText = await chatWithAssistant(userMsg.text, history);
+      const responseText = await chatWithAssistant(userMsg.text, currentHistory);
 
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),

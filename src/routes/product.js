@@ -71,18 +71,9 @@ router.get('/cheapest-today', async (req, res) => {
   try {
     const now = new Date();
     const prods = await Product.findAll({
-      where: {
-        [Op.or]: [
-          {
-            promoPrice: { [Op.not]: null },
-            promoUntil: { [Op.gte]: now }
-          },
-          {
-            promoPrice: null
-          }
-        ]
-      },
-      include: [Market] // Include Market to get store name
+      // Fixed: Removed restrictive 'where' clause that filtered out products with expired promotions completely.
+      // Now we fetch all, calculate effective price, and sort.
+      include: [Market] 
     });
     // map para preço real e ordenar
     const list = prods.map(p => ({

@@ -1,8 +1,12 @@
+
+
 import React, { useState } from 'react';
-import { BarChart3, Store, DollarSign, Users, TrendingUp, AlertCircle, Plus, Edit, Trash2, X, Save, Package, Search, Zap, ShoppingBag, Utensils, Leaf, Coffee, Sparkles, Snowflake, Fish, Tag, Bike, Car, Footprints } from 'lucide-react';
+import { BarChart3, Store, DollarSign, Users, TrendingUp, AlertCircle, Plus, Edit, Trash2, X, Save, Package, Search, Zap, ShoppingBag, Utensils, Leaf, Coffee, Sparkles, Snowflake, Fish, Tag, Bike, Car, Footprints, ClipboardList, CheckCircle, Clock, Ban, MapPin } from 'lucide-react';
 import { Button } from './Button';
 import { Order, Municipality, Product, Driver } from '../types';
 import { CATEGORIES } from '../constants';
+import { AdminOrderList } from './AdminOrderList';
+import { FinancialDashboard } from './FinancialDashboard'; // New Import
 
 interface AdminDashboardProps {
   orders: Order[];
@@ -23,7 +27,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateProduct,
   onDeleteProduct
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drivers'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'products' | 'drivers' | 'financial'>('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   
@@ -58,6 +62,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return <Tag {...props} className="mr-1.5 text-gray-500" />;
   };
 
+  const getDriverStatusBadge = (status: string) => {
+    switch (status) {
+      case 'available':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200"><CheckCircle size={10} /> Disponível</span>;
+      case 'busy':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"><Clock size={10} /> Ocupado</span>;
+      case 'offline':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200"><Ban size={10} /> Offline</span>;
+      default:
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">{status}</span>;
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -67,24 +84,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-gray-500">Gestão geral do Mercafácil Roraima</p>
         </div>
         
-        <div className="flex bg-white rounded-lg p-1 border border-gray-200 shadow-sm">
+        <div className="flex bg-white rounded-lg p-1 border border-gray-200 shadow-sm overflow-x-auto">
           <button 
             onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'overview' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             Visão Geral
           </button>
           <button 
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'orders' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            Pedidos
+          </button>
+          <button 
             onClick={() => setActiveTab('products')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'products' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'products' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             Produtos
           </button>
           <button 
             onClick={() => setActiveTab('drivers')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'drivers' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'drivers' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             Motoristas
+          </button>
+          <button 
+            onClick={() => setActiveTab('financial')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'financial' ? 'bg-green-100 text-green-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <DollarSign size={14} /> Financeiro
           </button>
         </div>
       </div>
@@ -128,11 +157,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          {/* Recent Orders Table */}
+          {/* Quick Order Preview */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <h3 className="font-bold text-gray-900">Últimos Pedidos</h3>
-              <Button variant="outline" size="sm">Ver todos</Button>
+              <Button variant="outline" size="sm" onClick={() => setActiveTab('orders')}>Ver todos</Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -181,6 +210,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* ORDERS TAB */}
+      {activeTab === 'orders' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <ClipboardList size={20} />
+              Gestão de Pedidos
+            </h3>
+            <AdminOrderList orders={orders} />
+        </div>
+      )}
+
       {/* DRIVERS TAB */}
       {activeTab === 'drivers' && (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -210,7 +250,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {driver.vehicleType === 'car' && <Car size={16}/>}
                                     {driver.vehicleType === 'bike' && <Bike size={16}/>}
                                     {driver.vehicleType === 'walking' && <Footprints size={16}/>}
-                                    {driver.vehicleType}
+                                    {driver.vehicleType === 'on_foot' && <Footprints size={16}/>}
+                                    {driver.vehicleType === 'on_foot' ? 'A pé' : driver.vehicleType}
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
@@ -220,9 +261,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </td>
                                 <td className="px-6 py-4 text-green-600 font-bold">R$ {driver.earnings.toFixed(2)}</td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${driver.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                        {driver.status}
-                                    </span>
+                                    {getDriverStatusBadge(driver.status)}
                                 </td>
                             </tr>
                         ))}
@@ -294,8 +333,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                            <div className={`w-2 h-2 rounded-full ${
-                             (product.stock || 0) > 20 ? 'bg-green-500' : 
-                             (product.stock || 0) > 0 ? 'bg-yellow-500' : 'bg-red-500'
+                             (product.stock || 0) > 20 ? 'bg-green-50' : 
+                             (product.stock || 0) > 0 ? 'bg-yellow-50' : 'bg-red-500'
                            }`}></div>
                            {(product.stock || 0)} un
                         </div>
@@ -323,6 +362,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
              </div>
           </div>
         </div>
+      )}
+
+      {/* FINANCIAL TAB (NEW) */}
+      {activeTab === 'financial' && (
+        <FinancialDashboard />
       )}
 
       {/* Product Modal */}
@@ -358,7 +402,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({ product, onClose, o
     description: product?.description || '',
     image: product?.image || '',
     category: product?.category || CATEGORIES[1].name,
-    stock: product?.stock || 0,
+    stock: product?.stock !== undefined ? product.stock : '', // Allows number or empty string
     store: product?.store || 'Mercado Geral', // Default store
   });
 
